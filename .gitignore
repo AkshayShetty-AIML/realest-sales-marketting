@@ -1,0 +1,17 @@
+/node_modules
+/.next/
+/out/
+/build
+.DS_Store
+*.pem
+npm-debug.log*
+*.tsbuildinfo
+next-env.d.ts
+.vercel
+
+# env files — only the template is committed
+.env*
+!.env.example
+
+# local sales store (when SALES_SUPABASE_* is unset) — demo data, never committed
+/.data/

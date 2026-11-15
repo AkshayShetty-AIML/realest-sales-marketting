@@ -1,0 +1,213 @@
+/*
+  DESIGN TOKENS — the ONE source. Lifted from docs/ui-mockups/asset-sheet.png
+  (sampled pixel values, cross-checked against the brief's stated tokens):
+
+    Brand
+      forest #0F6B46 (primary) · forest-dark #0B4F34 (hover / pressed)
+      rail   #113A2C (the nav, sampled)
+      sage   #6A8E79 (accent) · mint #D8EBDD · mint-light #EFF7F1
+    Semantics (score / trust / stage)
+      good  = forest           hot,  visit stages
+      caution = ochre #B7791F  warm, negotiation   (text uses ochre-ink #8A5A12 for AA)
+      risk  = rust  #B23A2F    cold, booking chip, lost, no-show
+    Surfaces
+      canvas #FAF8F5 · surface #FFFFFF · sand #F4F0E8 (table band, wells)
+    Type
+      Playfair Display headings: H1 40/48 · H2 32/40 · H3 24/32
+      Inter UI: Body L 16/24 · Body M 14/20 · small 12/16
+
+  Contrast (computed): ink on canvas 13.9:1 · body 7.6:1 · muted 5.6:1 ·
+  white on forest 6.6:1 · forest on mint 5.4:1 · ochre-ink on its wash 5.2:1 ·
+  rust on its wash 5.0:1.
+*/
+:root {
+  /* ── Brand ── */
+  --color-forest: #0f6b46;
+  --color-forest-dark: #0b4f34;
+  --color-sage: #6a8e79;
+  --color-mint: #d8ebdd;
+  --color-mint-light: #eff7f1;
+  --color-ochre: #b7791f;
+  --color-ochre-ink: #8a5a12;
+  --color-rust: #b23a2f;
+  --color-olive: #a2a18a;
+  --color-warm-grey: #e7e1da;
+
+  /* ── Rail (left nav) ── */
+  --color-rail-bg: #113a2c;
+  --color-rail-ink: #d7ebdf;
+  --color-rail-muted: #a8c9b6;
+  --color-rail-active: #f1f4ef;
+
+  /* ── Surfaces ── */
+  --color-canvas: #faf8f5;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f6f3ee; /* wells, kanban columns */
+  --color-band: #f4f0e8; /* table header band */
+  --color-rail: #ffffff;
+
+  /* ── Text ── */
+  --color-ink: #1f2a24;
+  --color-body: #4a5049;
+  --color-muted: #5f635c;
+
+  /* ── Hairlines ── */
+  --color-line: #ebe6de;
+  --color-line-strong: #d6cfc4;
+
+  /* ── Brand roles ── */
+  --color-brand: var(--color-forest);
+  --color-brand-hover: var(--color-forest-dark);
+  --color-brand-wash: var(--color-mint);
+  --color-brand-mist: var(--color-mint-light);
+  --color-sage-ink: #4a6654;
+  --color-brass: #8a6a2a;
+
+  /* ── Grade (honest grade) ── */
+  --color-grade-a: var(--color-forest);
+  --color-grade-b: var(--color-ochre);
+  --color-grade-c: var(--color-rust);
+
+  /* ── Trust semantics: plain = text-safe, -fill = dots/bars, -bg = wash ── */
+  --color-trust-good: #0f6b46;
+  --color-trust-good-fill: var(--color-forest);
+  --color-trust-good-bg: #e5f0e9;
+  --color-trust-caution: var(--color-ochre-ink);
+  --color-trust-caution-fill: var(--color-ochre);
+  --color-trust-caution-bg: #fde8c8;
+  --color-trust-risk: var(--color-rust);
+  --color-trust-risk-fill: var(--color-rust);
+  --color-trust-risk-bg: #f8e1dc;
+
+  /* ── Stage chips (asset sheet → "Pipeline stages") ── */
+  --color-stage-inquiry-bg: #e9e8e4;
+  --color-stage-qualified-bg: #eef1ea;
+  --color-stage-visit-bg: #e5f0e9;
+  --color-stage-done-bg: #daebe1;
+  --color-stage-negotiation-bg: #fdeacd;
+  --color-stage-booking-bg: #f8dcd5;
+
+  /* ── Kanban column tints ── */
+  --color-col-visit: #eef4ed;
+  --color-col-booking: #fdf2e5;
+
+  /* ── Conversation ── */
+  --color-bubble-out: #e2efe6;
+  --color-bubble-in: #ffffff;
+
+  /* ── Dashboard bars (stage bars by stage family; funnel one hue) ── */
+  --color-bar-strong: #20664f;
+  --color-bar-visit: #8bb89e;
+  --color-bar-late: #e9c9a0;
+  --color-bar-funnel: #147a4b;
+  /* Chart fill for "caution" parts (validated: forest / this / rust → all pass) */
+  --color-chart-caution: #daa24c;
+
+  /* ── Agent harness status (mockup legend: running blue · idle grey · blocked ochre · done forest · tainted rust; dry-run violet) ── */
+  --color-status-run: #2f62c8;
+  --color-status-run-bg: #e7eefb;
+  --color-status-idle: #8a8f88;
+  --color-status-dry: #5b45b8;
+  --color-status-dry-bg: #efebfb;
+  --color-console: #0f1f19; /* the step-log terminal */
+  --color-console-ink: #d7ebdf;
+
+  /* ── Type ── */
+  --font-display: var(--font-playfair);
+  --font-ui: var(--font-inter);
+
+  /* ── Shape ── */
+  --radius-control: 8px;
+  --radius-card: 14px;
+  --radius-chip: 9999px;
+
+  /* ── Elevation ── */
+  --shadow-card: 0 1px 2px rgba(31, 42, 36, 0.04), 0 6px 18px -10px rgba(31, 42, 36, 0.12);
+  --shadow-lift: 0 22px 48px -22px rgba(31, 42, 36, 0.3), 0 2px 6px rgba(31, 42, 36, 0.05);
+  --shadow-control: 0 1px 2px rgba(31, 42, 36, 0.06);
+}
+
+@theme inline {
+  --color-forest: var(--color-forest);
+  --color-forest-dark: var(--color-forest-dark);
+  --color-sage: var(--color-sage);
+  --color-mint: var(--color-mint);
+  --color-mint-light: var(--color-mint-light);
+  --color-ochre: var(--color-ochre);
+  --color-ochre-ink: var(--color-ochre-ink);
+  --color-rust: var(--color-rust);
+  --color-olive: var(--color-olive);
+  --color-warm-grey: var(--color-warm-grey);
+
+  --color-canvas: var(--color-canvas);
+  --color-surface: var(--color-surface);
+  --color-surface-alt: var(--color-surface-alt);
+  --color-band: var(--color-band);
+  --color-rail: var(--color-rail);
+  --color-rail-bg: var(--color-rail-bg);
+  --color-rail-ink: var(--color-rail-ink);
+  --color-rail-muted: var(--color-rail-muted);
+  --color-rail-active: var(--color-rail-active);
+
+  --color-ink: var(--color-ink);
+  --color-body: var(--color-body);
+  --color-muted: var(--color-muted);
+  --color-line: var(--color-line);
+  --color-line-strong: var(--color-line-strong);
+
+  --color-brand: var(--color-brand);
+  --color-brand-hover: var(--color-brand-hover);
+  --color-brand-wash: var(--color-brand-wash);
+  --color-brand-mist: var(--color-brand-mist);
+  --color-sage-ink: var(--color-sage-ink);
+  --color-brass: var(--color-brass);
+
+  --color-grade-a: var(--color-grade-a);
+  --color-grade-b: var(--color-grade-b);
+  --color-grade-c: var(--color-grade-c);
+
+  --color-trust-good: var(--color-trust-good);
+  --color-trust-good-fill: var(--color-trust-good-fill);
+  --color-trust-good-bg: var(--color-trust-good-bg);
+  --color-trust-caution: var(--color-trust-caution);
+  --color-trust-caution-fill: var(--color-trust-caution-fill);
+  --color-trust-caution-bg: var(--color-trust-caution-bg);
+  --color-trust-risk: var(--color-trust-risk);
+  --color-trust-risk-fill: var(--color-trust-risk-fill);
+  --color-trust-risk-bg: var(--color-trust-risk-bg);
+
+  --color-stage-inquiry-bg: var(--color-stage-inquiry-bg);
+  --color-stage-qualified-bg: var(--color-stage-qualified-bg);
+  --color-stage-visit-bg: var(--color-stage-visit-bg);
+  --color-stage-done-bg: var(--color-stage-done-bg);
+  --color-stage-negotiation-bg: var(--color-stage-negotiation-bg);
+  --color-stage-booking-bg: var(--color-stage-booking-bg);
+  --color-col-visit: var(--color-col-visit);
+  --color-col-booking: var(--color-col-booking);
+  --color-bubble-out: var(--color-bubble-out);
+  --color-bubble-in: var(--color-bubble-in);
+  --color-bar-strong: var(--color-bar-strong);
+  --color-bar-visit: var(--color-bar-visit);
+  --color-bar-late: var(--color-bar-late);
+  --color-bar-funnel: var(--color-bar-funnel);
+  --color-chart-caution: var(--color-chart-caution);
+
+  --color-status-run: var(--color-status-run);
+  --color-status-run-bg: var(--color-status-run-bg);
+  --color-status-idle: var(--color-status-idle);
+  --color-status-dry: var(--color-status-dry);
+  --color-status-dry-bg: var(--color-status-dry-bg);
+  --color-console: var(--color-console);
+  --color-console-ink: var(--color-console-ink);
+
+  --font-display: var(--font-display);
+  --font-ui: var(--font-ui);
+
+  --radius-control: var(--radius-control);
+  --radius-card: var(--radius-card);
+  --radius-chip: var(--radius-chip);
+
+  --shadow-card: var(--shadow-card);
+  --shadow-lift: var(--shadow-lift);
+  --shadow-control: var(--shadow-control);
+}
