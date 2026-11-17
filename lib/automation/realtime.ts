@@ -25,6 +25,8 @@ const CURSOR = "premium-leads";
 /** When the lead loop started: only leads created after it are new. */
 const LOOP_START = "lead-loop-start";
 const POLL_MS = 5000;
+/** Pages per sync (200 leads each); anything beyond is picked up by the next sync. */
+const MAX_PAGES = 25;
 
 export type FeedStatus = "off" | "connecting" | "subscribed" | "polling" | "error";
 
@@ -57,21 +59,27 @@ async function syncOnce(trigger: string): Promise<number> {
   }
   let start = await store().getCursor(LOOP_START);
   if (!start) await store().setCursor(LOOP_START, (start = now));
-  const leads = await premium.listLeads({ since: cursor, limit: 200 });
+  // Premium's sync cursor: pass nextCursor back as received, page while hasMore. Saved after
+  // every page, so a restart resumes where it stopped. (A v1 ISO time is still a valid cursor.)
+  let next = cursor;
   let handled = 0;
-  for (const lead of leads) {
-    if (Date.parse(lead.createdAt) < Date.parse(start) || lead.status === "won" || lead.status === "lost") continue;
-    try {
-      const result = await handleNewLead(lead, trigger);
-      if (!result.handled) continue;
-      console.info(`[lead-feed] ${lead.id}: ${result.firstReply}${result.workspaceId ? ` · funnel in ${result.workspaceId}` : ""}`);
-      handled += 1;
-    } catch (error) {
-      console.warn(`[lead-feed] ${lead.id}: failed — ${error instanceof Error ? error.message : "unknown"}`);
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const r = await premium.syncLeads(next);
+    for (const lead of r.leads) {
+      if (Date.parse(lead.createdAt) < Date.parse(start) || lead.status === "won" || lead.status === "lost") continue;
+      try {
+        const result = await handleNewLead(lead, trigger);
+        if (!result.handled) continue;
+        console.info(`[lead-feed] ${lead.id}: ${result.firstReply}${result.workspaceId ? ` · funnel in ${result.workspaceId}` : ""}`);
+        handled += 1;
+      } catch (error) {
+        console.warn(`[lead-feed] ${lead.id}: failed — ${error instanceof Error ? error.message : "unknown"}`);
+      }
     }
+    next = r.nextCursor;
+    await store().setCursor(CURSOR, next);
+    if (!r.hasMore) break;
   }
-  const latest = leads.map((l) => l.updatedAt).sort().at(-1);
-  await store().setCursor(CURSOR, latest && latest > cursor ? latest : cursor);
   holder().lastSyncAt = new Date().toISOString();
   return handled;
 }

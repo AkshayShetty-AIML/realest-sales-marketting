@@ -19,13 +19,14 @@ import { reraLine } from "../facts";
  */
 
 export interface InAppDeliverer {
-  deliver(input: { leadId: string; template: string; reraRegNo: string; sentBy: string }): Promise<{ premiumMessageId: string | null; body: string }>;
+  /** `complianceLine` (an exemption statement) replaces the RERA line when given. */
+  deliver(input: { leadId: string; template: string; reraRegNo: string; complianceLine?: string; sentBy: string }): Promise<{ premiumMessageId: string | null; body: string }>;
 }
 
 export const premiumInAppDeliverer: InAppDeliverer = {
-  async deliver({ leadId, template, reraRegNo, sentBy }) {
+  async deliver({ leadId, template, reraRegNo, complianceLine, sentBy }) {
     const lead = await premium.getLead(leadId);
-    const body = `${await renderFor(template, { lead })}\n\n${reraLine(reraRegNo)}`;
+    const body = `${await renderFor(template, { lead })}\n\n${complianceLine ?? reraLine(reraRegNo)}`;
     const result = await deliver(leadId, "in_app", body, sentBy);
     if (result.status !== "sent") throw new Error(result.note ?? "in-app delivery failed");
     return { premiumMessageId: result.premiumMessageId, body };

@@ -233,7 +233,7 @@ export interface Feedback {
 }
 
 /** A short, random, revocable link for the buyer (booking, visit management, feedback, brochure). */
-export type LinkPurpose = "book" | "visit" | "feedback" | "brochure";
+export type LinkPurpose = "book" | "visit" | "feedback" | "brochure" | "proposal";
 
 export interface LinkToken {
   token: string;
@@ -242,6 +242,8 @@ export interface LinkToken {
   visitId: string | null;
   /** purpose "brochure": which brochure the link opens. */
   brochureId?: string | null;
+  /** purpose "proposal": which proposal version the link opens. */
+  proposalId?: string | null;
   expiresAt: string;
   createdAt: string;
   usedAt: string | null;
@@ -321,6 +323,42 @@ export interface ServiceInterest {
   at: string;
 }
 
+/**
+ * A project's advertising compliance (Brand settings): its RERA registration
+ * number, OR an exemption statement with the reason and an evidence reference.
+ * Every outbound message on that project carries whichever is set; with
+ * neither, nothing goes out.
+ */
+export interface ProjectCompliance {
+  projectId: string;
+  mode: "rera" | "exempt";
+  reraRegNo: string | null;
+  exemption: { statement: string; reason: string; evidenceRef: string } | null;
+  updatedBy: string;
+  updatedAt: string;
+}
+
+/**
+ * OPS-02 — one version of a proposal for a lead and a unit: the cost sheet and
+ * payment plans as they stood, on the developer's brand kit. A changed price or
+ * plan makes a new version; old versions are kept. Prices come from premium
+ * (read at generation time); nothing here is a copy of the inventory.
+ */
+export interface Proposal {
+  id: string;
+  leadId: string;
+  propertyId: string;
+  unitId: string;
+  version: number;
+  /** Hash of the priced content — the same inputs reuse the latest version. */
+  contentHash: string;
+  content: Record<string, unknown>;
+  createdAt: string;
+  createdBy: string;
+  /** Sending goes through the approval gate. */
+  send: { status: "draft" | "awaiting_approval" | "sent" | "declined" | "not_sent"; approvalId: string | null; workspaceId: string | null; at: string | null; note: string | null };
+}
+
 export interface SalesStore {
   readonly kind: "file" | "supabase";
   listReps(): Promise<Rep[]>;
@@ -381,4 +419,10 @@ export interface SalesStore {
   listFirstReplies(): Promise<FirstReply[]>;
   addServiceInterest(row: ServiceInterest): Promise<void>;
   listServiceInterests(): Promise<ServiceInterest[]>;
+  getProjectCompliance(projectId: string): Promise<ProjectCompliance | null>;
+  listProjectCompliance(): Promise<ProjectCompliance[]>;
+  setProjectCompliance(row: ProjectCompliance): Promise<void>;
+  upsertProposal(p: Proposal): Promise<void>;
+  getProposal(id: string): Promise<Proposal | null>;
+  listProposals(filter?: { leadId?: string }): Promise<Proposal[]>;
 }

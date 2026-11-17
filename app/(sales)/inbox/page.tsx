@@ -5,6 +5,7 @@ import { loadInbox, type InboxRow } from "@/lib/inbox-data";
 import { LEAD_STAGES, STAGE_LABEL, type LeadStage } from "@/lib/premium/contract";
 import { istDayKey, formatIst } from "@/lib/scheduling/time";
 import { AppShell, PageHeader } from "@/app/_shell/AppShell";
+import { buttonClass } from "@/components/ui/Button";
 import { ScoreCircle, StageChip } from "@/components/Chips";
 import { ErrorPanel } from "@/components/ErrorPanel";
 import { LiveRefresh } from "@/components/LiveRefresh";
@@ -76,7 +77,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
 
   return (
     <AppShell rep={rep.name} demo={rep.demo} counts={counts}>
-      <PageHeader title="Leads" description="All incoming buyer inquiries from the premium app, hottest first." actions={<LiveRefresh />} />
+      <PageHeader title="Leads" description="All incoming buyer inquiries from the premium app, hottest first." actions={<div className="flex items-center gap-3"><LiveRefresh /><Link href="/leads/new" className={buttonClass({ size: "sm" })}>Add lead</Link></div>} />
 
       {error ? (
         <ErrorPanel message={error} />

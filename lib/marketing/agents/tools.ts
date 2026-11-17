@@ -72,7 +72,7 @@ export interface SendResult {
  * THE ONE SEND PATH. `recipient` (leadId) + `template` are needed for in_app:
  * the template is rendered for that lead at send time and delivered live.
  */
-async function sendOutbound(ctx: ToolContext, input: { tool: string; channel: string; payload: Record<string, unknown>; ships: ShipItem[]; leadId?: string | null; template?: string | null }): Promise<SendResult> {
+export async function sendOutbound(ctx: ToolContext, input: { tool: string; channel: string; payload: Record<string, unknown>; ships: ShipItem[]; leadId?: string | null; template?: string | null }): Promise<SendResult> {
   // Exactly once per approved action.
   if (ctx.approvalId) {
     const prior = (await ctx.memory.list(KINDS.outbox)).find((o) => o.data.approvalId === ctx.approvalId);
@@ -92,7 +92,7 @@ async function sendOutbound(ctx: ToolContext, input: { tool: string; channel: st
       const r = await record({ sent: false, mode: "no_recipient", channel: input.channel, note: "Not sent — an in-app message needs a lead to send to (this step had none)." });
       return r;
     }
-    const delivered = await inAppDeliverer().deliver({ leadId: input.leadId, template: input.template, reraRegNo: input.ships[0]?.reraRegNo ?? "", sentBy: `marketing:${ctx.actor.replace(/^operator:/, "")}` });
+    const delivered = await inAppDeliverer().deliver({ leadId: input.leadId, template: input.template, reraRegNo: input.ships[0]?.reraRegNo ?? "", complianceLine: input.ships[0]?.complianceLine, sentBy: `marketing:${ctx.actor.replace(/^operator:/, "")}` });
     const r = await record({ sent: true, mode: "live", channel: input.channel, premiumMessageId: delivered.premiumMessageId, note: "Delivered in-app — in the lead's conversation thread and the prospect's inbox." }, { body: delivered.body });
     await salesAudit("marketing-message-delivered", input.leadId, ctx.actor, `${title} — delivered in-app (sent:true)`);
     return r;
@@ -371,12 +371,13 @@ export interface FirstTouchMessage {
   note: string | null;
 }
 
-const firstTouchShips = (i: { body: string; reraRegNo: string; aiLabel: string }): ShipItem[] => [{ text: `${i.body}\n\n${reraLine(i.reraRegNo)}`, reraRegNo: i.reraRegNo, aiLabel: i.aiLabel, aiAssisted: true }];
+/** The project's RERA line or its exemption statement — the line the message must end with. */
+const firstTouchShips = (i: { body: string; complianceLine: string; reraRegNo: string; aiLabel: string }): ShipItem[] => [{ text: `${i.body}\n\n${i.complianceLine}`, reraRegNo: i.reraRegNo, complianceLine: i.complianceLine, aiLabel: i.aiLabel, aiAssisted: true }];
 
-export const firstTouchReply: HarnessTool<{ leadKey: string; index: number; body: string; reraRegNo: string; aiLabel: string }> = {
+export const firstTouchReply: HarnessTool<{ leadKey: string; index: number; body: string; complianceLine: string; reraRegNo: string; aiLabel: string }> = {
   name: "first_touch.reply",
   description: "Sends one first-touch message to a new lead in-app, with its RERA line and AI label — exactly the text drafted for that lead in this workspace. Outbound (send): approval-gated; only the low-risk types a workspace switched to automatic go without approval (lib/marketing/agents/first-touch.ts). Not plannable by agents.",
-  inputSchema: z.object({ leadKey: z.string().regex(/^lead-/), index: z.number().int().min(0).max(5), body: z.string().min(1).max(500), reraRegNo: z.string().min(1), aiLabel: z.string().min(1) }),
+  inputSchema: z.object({ leadKey: z.string().regex(/^lead-/), index: z.number().int().min(0).max(5), body: z.string().min(1).max(500), complianceLine: z.string().min(5).max(300), reraRegNo: z.string().max(120), aiLabel: z.string().min(1) }),
   effect: "outbound",
   outbound: "send",
   requiresApproval: true,
@@ -386,7 +387,7 @@ export const firstTouchReply: HarnessTool<{ leadKey: string; index: number; body
   handler: async (input, ctx) => {
     const record = (await ctx.memory.get(FIRST_TOUCH_KIND, input.leadKey)) ?? fail("No first-touch draft for that lead in this workspace — nothing sent.");
     const message = (record.data.messages as FirstTouchMessage[] | undefined)?.[input.index] ?? fail("That first-touch message doesn't exist.");
-    if (message.body !== input.body || record.data.reraRegNo !== input.reraRegNo || message.aiLabel !== input.aiLabel) fail("What was approved doesn't match the stored draft — nothing sent.");
+    if (message.body !== input.body || record.data.complianceLine !== input.complianceLine || message.aiLabel !== input.aiLabel) fail("What was approved doesn't match the stored draft — nothing sent.");
     return sendOutbound(ctx, { tool: "first_touch.reply", channel: "in_app", payload: { title: `First reply ${input.index + 1} · ${input.leadKey}`, leadKey: input.leadKey, index: input.index, types: message.types }, ships: firstTouchShips(input), leadId: String(record.data.leadId), template: input.body });
   },
 };

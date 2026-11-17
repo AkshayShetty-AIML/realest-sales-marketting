@@ -97,8 +97,9 @@ export function complianceCheck(effect: ToolEffect, outbound: string | null, ite
   items.forEach((item, i) => {
     const n = items.length > 1 ? ` (item ${i + 1})` : "";
     if (!item.text.trim()) problems.push(`empty copy${n}`);
-    if (!item.reraRegNo?.trim()) problems.push(`no RERA registration number${n}`);
-    else if (!item.text.includes(reraLine(item.reraRegNo.trim()))) problems.push(`the copy does not carry "${reraLine(item.reraRegNo.trim())}"${n}`);
+    const line = item.complianceLine?.trim() || (item.reraRegNo?.trim() ? reraLine(item.reraRegNo.trim()) : null);
+    if (!line) problems.push(`no RERA registration number (or exemption)${n}`);
+    else if (!item.text.includes(line)) problems.push(`the copy does not carry "${line}"${n}`);
     if (item.aiAssisted && !(item.aiLabel && AI_LABEL_PATTERN.test(item.aiLabel))) problems.push(`AI-assisted copy without an AI label${n}`);
   });
   return { ok: problems.length === 0, problems };

@@ -98,7 +98,7 @@ export async function executeJob(job: Job, now = new Date()): Promise<JobOutcome
 
     const body = await renderFor(job.template, { lead, visitId: run?.visitId ?? null });
     const result = await deliver(job.leadId, job.channel, body, job.source.startsWith("sequence:") ? `sequence:${seq?.name ?? job.sequenceId}` : job.source);
-    await release({ status: result.status, body, note: result.note, premiumMessageId: result.premiumMessageId, executedAt: now.toISOString() });
+    await release({ status: result.status, body: result.body ?? body, note: result.note, premiumMessageId: result.premiumMessageId, executedAt: now.toISOString() });
     if (run) {
       const left = (await store().listJobs({ leadId: job.leadId, status: "pending" })).some((j) => j.runId === run.id);
       if (!left) await store().upsertRun({ ...run, status: "completed" });

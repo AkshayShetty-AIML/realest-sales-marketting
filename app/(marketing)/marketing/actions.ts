@@ -15,6 +15,7 @@ import { BroadcastBlocked, draftBroadcast, publishDue, sendBroadcast } from "@/l
 import { ARCHETYPE_LABEL, OBJECT_TYPES, PUBLISH_STATUSES, SOCIAL_CHANNELS } from "@/lib/premium/marketing-contract";
 import { GOALS, describeList, fromFriendly, standardCampaignName, trackingCode, usedFields } from "@/lib/marketing/labels";
 import { marketing } from "@/lib/premium/marketing-client";
+import { audit, store } from "@/lib/store";
 import { ListRules, resolveList } from "@/lib/marketing/buyer-lists";
 import { QUIZ, type QuizAnswers } from "@/lib/premium/marketing-contract";
 
@@ -298,5 +299,35 @@ export async function createCampaignAction(input: unknown) {
       createdBy: actor,
     });
     return { data: { id: c.id }, note: `Campaign “${c.name}” created.` };
+  });
+}
+
+// ─── Project compliance: a RERA number OR an exemption, per project ─────────
+
+const ProjectComplianceInput = z.discriminatedUnion("mode", [
+  z.object({ projectId: z.string().regex(/^[A-Za-z0-9_\-:|.]{1,160}$/), mode: z.literal("rera"), reraRegNo: z.string().trim().regex(/^[A-Za-z0-9][A-Za-z0-9/._ -]{3,79}$/, "RERA reg no.: letters, digits and / . _ -") }),
+  z.object({
+    projectId: z.string().regex(/^[A-Za-z0-9_\-:|.]{1,160}$/),
+    mode: z.literal("exempt"),
+    statement: z.string().trim().min(10, "Write the exemption statement buyers will see.").max(160),
+    reason: z.string().trim().min(5, "Give the reason it is exempt.").max(200),
+    evidenceRef: z.string().trim().min(3, "Add the evidence reference (e.g. the legal opinion's number).").max(120),
+  }),
+]);
+
+/** Every outbound message on the project carries what is saved here; with neither, nothing is sent. */
+export async function saveProjectComplianceAction(input: unknown) {
+  return run(["/marketing/brand-kit"], async (actor) => {
+    const v = ProjectComplianceInput.parse(input);
+    await store().setProjectCompliance({
+      projectId: v.projectId,
+      mode: v.mode,
+      reraRegNo: v.mode === "rera" ? v.reraRegNo : null,
+      exemption: v.mode === "exempt" ? { statement: v.statement, reason: v.reason, evidenceRef: v.evidenceRef } : null,
+      updatedBy: actor,
+      updatedAt: new Date().toISOString(),
+    });
+    await audit("project-compliance-set", null, actor, v.mode === "rera" ? `${v.projectId}: RERA ${v.reraRegNo}` : `${v.projectId}: exempt — ${v.reason} (ref. ${v.evidenceRef})`);
+    return { note: v.mode === "rera" ? "Saved — messages on this project carry this RERA number." : "Saved — messages on this project carry this exemption statement." };
   });
 }

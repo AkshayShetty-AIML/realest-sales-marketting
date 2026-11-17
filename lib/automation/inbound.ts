@@ -51,7 +51,7 @@ export async function handleInbound(fromE164: string, body: string, receivedAt?:
   const mode = conversation?.mode ?? "ai";
   const draft = await draftForRep(leadId);
   if (mode === "ai" && !draft.handoff && draft.humanTopics.length === 0) {
-    await sendMessage(leadId, "whatsapp", draft.body, AI_SENDER);
+    await sendMessage(leadId, "whatsapp", draft.body, AI_SENDER, { ai: draft.engine === "llm" });
     await store().setConversation({ leadId, mode, takenOverBy: null, takenOverAt: null, suggestedDraft: null });
     await audit("auto-reply", leadId, AI_SENDER, `answered on WhatsApp; ${draft.engine}; facts: ${draft.factKeys.join(", ")}`);
     return { leadId, outcome: "answered" };

@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { LeadUnits } from "@/components/lead/units";
+import type { ProposalContent } from "@/lib/proposals/proposals";
 import { notFound } from "next/navigation";
 import { requireRep } from "@/lib/auth";
 import { premium, PremiumError } from "@/lib/premium/client";
@@ -7,7 +9,7 @@ import { store } from "@/lib/store";
 import type { WaMessage } from "@/lib/store/types";
 import { navCounts } from "@/lib/inbox-data";
 import { deriveContext } from "@/lib/automation/context";
-import { buildFacts } from "@/lib/grounding/facts";
+import { buildFacts, inr } from "@/lib/grounding/facts";
 import { whatsappPlan, WINDOW_MS } from "@/lib/whatsapp/twilio";
 import { AppShell } from "@/app/_shell/AppShell";
 import { AiChip, ChannelChip, MaskedBadge, ScoreChip, StageChip, StatusChip } from "@/components/Chips";
@@ -27,7 +29,6 @@ import {
   OwnerControl,
   RevealContact,
   StageControl,
-  UnitStatus,
   VisitStatus,
 } from "@/components/lead/controls";
 import { Lifecycle } from "@/components/lead/Lifecycle";
@@ -44,7 +45,6 @@ import type { JobStatus } from "@/lib/store/types";
 
 export const dynamic = "force-dynamic";
 
-const UNIT_TONE = { available: "good", blocked: "caution", sold: "neutral" } as const;
 
 interface ThreadItem {
   id: string;
@@ -57,7 +57,8 @@ interface ThreadItem {
   wa: WaMessage | null;
 }
 
-export default async function LeadPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function LeadPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ existing?: string }> }) {
+  const existingLead = (await searchParams).existing === "1";
   const rep = await requireRep();
   const leadId = decodeURIComponent((await params).id);
 
@@ -93,6 +94,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
     store().listBrochures({ leadId }),
     store().listVisits({ leadId }),
   ]);
+  const proposals = await store().listProposals({ leadId });
   const seqName = (id: string | null) => sequences.find((s) => s.id === id)?.name ?? (id ? "sequence" : "one-off");
   const activeRuns = runs.filter((r) => r.status === "active");
   const upcomingJobs = jobs.filter((j) => j.status === "pending").slice(0, 8);
@@ -163,6 +165,7 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
 
   return (
     <AppShell rep={rep.name} demo={rep.demo} counts={counts} fit>
+      {existingLead && <p role="status" className="mb-3 rounded-control border border-line bg-brand-mist px-3 py-2 text-[13px] text-brand">This person is already a lead on this project, so nothing new was created — here is their lead.</p>}
       {/* ── Header ── */}
       <div className="mb-3 flex shrink-0 items-start justify-between gap-4">
         <div className="min-w-0">
@@ -301,6 +304,35 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
             )}
           </Card>
 
+          {/* (e2) units: the allocation lock + proposals (OPS-01 / OPS-02) */}
+          <Card title="Units & proposals" bodyClassName="px-5 py-2">
+            <LeadUnits
+              leadId={lead.id}
+              units={units.map((u) => ({
+                unitId: u.unitId,
+                label: u.label ?? u.unitNo ?? u.unitId,
+                detail: [u.config, u.floor !== null && u.floor !== undefined ? `Floor ${u.floor}` : null, u.facing ? `${u.facing} facing` : null, u.price ? inr(u.price) : null].filter(Boolean).join(" · ") || "Details as listed",
+                status: u.availability ?? u.status,
+                indicative: Boolean(u.indicative),
+                holdNote: (u.availability ?? u.status) === "held" ? `Held${u.hold?.by ? ` by ${repName(u.hold.by)}` : ""}${u.hold?.leadId === lead.id ? " for this buyer" : u.hold?.leadId ? " for another buyer" : ""}${u.blockedUntil ? ` until ${when(u.blockedUntil)}` : ""}` : u.bookingRef ? `Sold · booking ${u.bookingRef}` : null,
+                heldForThisLead: (u.availability ?? u.status) === "held" && u.hold?.leadId === lead.id,
+              }))}
+              proposals={proposals.map((p) => {
+                const c = p.content as ProposalContent;
+                return {
+                  id: p.id,
+                  version: p.version,
+                  unitLabel: c.unit.label,
+                  total: c.sheet.onRequest ? "on request" : inr(c.sheet.total),
+                  toConfirm: c.sheet.onRequest ? [] : c.sheet.toConfirm,
+                  createdLabel: when(p.createdAt),
+                  sendStatus: p.send.status,
+                  note: p.send.note,
+                };
+              })}
+            />
+          </Card>
+
           {/* (f) messaging preferences — replaces the WhatsApp card */}
           <Card title="Messaging preferences" bodyClassName="px-5 py-2.5">
             <MessagingPrefs leadId={lead.id} whatsapp={optIn?.status ?? null} whatsappLive={whatsappLive} />
@@ -346,21 +378,6 @@ export default async function LeadPage({ params }: { params: Promise<{ id: strin
                     ))}
                   </ul>
                 )}
-              </section>
-              <section>
-                <h3 className="mb-2 text-[12px] font-semibold uppercase tracking-[0.08em] text-sage-ink">Units at this property</h3>
-                <ul className="space-y-2">
-                  {units.map((u) => (
-                    <li key={u.unitId} className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="flex items-center gap-2 truncate text-[13px] font-medium text-ink">{u.unitId} <Badge tone={UNIT_TONE[u.status]}>{u.status}</Badge></p>
-                        <p className="text-[12px] text-muted">verified {when(u.lastVerifiedAt)}</p>
-                      </div>
-                      <UnitStatus leadId={lead.id} unitId={u.unitId} status={u.status} />
-                    </li>
-                  ))}
-                  {units.length === 0 && <li className="text-[13px] text-muted">No units listed.</li>}
-                </ul>
               </section>
               <section>
                 <h3 className="mb-2 text-[12px] font-semibold uppercase tracking-[0.08em] text-sage-ink">WhatsApp delivery</h3>

@@ -9,7 +9,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "db:seed": "node --env-file-if-exists=.env.local --require ./scripts/allow-server-only.cjs --import tsx scripts/seed.ts",
-    "verify": "tsx --require ./scripts/allow-server-only.cjs scripts/verify-unit.ts",
+    "verify": "tsx --require ./scripts/allow-server-only.cjs scripts/verify-unit.ts && tsx --require ./scripts/allow-server-only.cjs scripts/verify-desk.ts",
     "verify:bundle": "node --env-file-if-exists=.env.local --import tsx scripts/verify-bundle.ts",
     "verify:live": "node --env-file-if-exists=.env.local --require ./scripts/allow-server-only.cjs --import tsx scripts/verify-live.ts",
     "verify:batch2": "node --env-file-if-exists=.env.local --require ./scripts/allow-server-only.cjs --import tsx scripts/verify-batch2.ts",
