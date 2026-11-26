@@ -70,8 +70,8 @@ import { LOCAL_COPY_KINDS } from "../lib/marketing/harness/types";
 /** Stands in for premium's POST /leads/:id/messages: records every in-app delivery so "exactly once" is countable. */
 const delivered: { leadId: string; body: string }[] = [];
 setInAppDeliverer({
-  deliver: async ({ leadId, template, reraRegNo }) => {
-    const body = `${template.replace(/\{\{\s*firstName[^}]*\}\}/g, "Ravi")}\n\nRERA Reg. No.: ${reraRegNo}`;
+  deliver: async ({ leadId, template, reraRegNo, complianceLine }) => {
+    const body = `${template.replace(/\{\{\s*firstName[^}]*\}\}/g, "Ravi")}\n\n${complianceLine ?? `RERA Reg. No.: ${reraRegNo}`}`;
     delivered.push({ leadId, body });
     return { premiumMessageId: `msg-${delivered.length}`, body };
   },

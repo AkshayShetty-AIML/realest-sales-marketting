@@ -14,7 +14,7 @@ import { deriveContext } from "../lib/automation/context";
 import { isValidTwilioSignature, twilioSignature } from "../lib/whatsapp/signature";
 import { maskE164, phoneHash, toE164 } from "../lib/whatsapp/phone";
 import { friendlyTwilioError, toWaStatus, windowOpen, WINDOW_MS } from "../lib/whatsapp/twilio";
-import { CHANNELS, LEAD_STAGES, LEAD_STATUSES, VISIT_STATUSES, type LeadDetail, type Property } from "../lib/premium/contract";
+import { CHANNELS, LEAD_STAGES, LEAD_STATUSES, LEGACY_UNIT_STATUSES, UNIT_STATUSES, VISIT_STATUSES, type LeadDetail, type Property } from "../lib/premium/contract";
 import type { Assignment, Rep, VisitRecord } from "../lib/store/types";
 import { formatIst, istParts, istToUtc, nextSendable, checkInWindowOpen } from "../lib/scheduling/time";
 import { availableSlots, isBookable, DEFAULT_VISIT_SETTINGS } from "../lib/scheduling/slots";
@@ -172,6 +172,8 @@ if (existsSync(premiumSchemas)) {
   check("stage", list("LEAD_STAGES") === JSON.stringify(LEAD_STAGES));
   check("channel", list("CHANNELS") === JSON.stringify(CHANNELS));
   check("visit", list("VISIT_STATUSES") === JSON.stringify(VISIT_STATUSES));
+  check("unit (canonical)", list("UNIT_STATUSES") === JSON.stringify(UNIT_STATUSES));
+  check("unit (v1 wire, held sent as blocked)", list("LEGACY_UNIT_STATUSES") === JSON.stringify(LEGACY_UNIT_STATUSES));
 } else {
   console.log("  (premium repo not found beside this one — enum comparison skipped)");
 }

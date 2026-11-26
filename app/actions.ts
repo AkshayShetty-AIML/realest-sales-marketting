@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireRepForAction } from "@/lib/auth";
 import { premium, PremiumError } from "@/lib/premium/client";
-import { CHANNELS, LEAD_STAGES, LEAD_STATUSES, UNIT_STATUSES, VISIT_STATUSES } from "@/lib/premium/contract";
+import { CHANNELS, LEAD_STAGES, LEAD_STATUSES, VISIT_STATUSES } from "@/lib/premium/contract";
 import { audit, store } from "@/lib/store";
 import { assignLead, autoAssign, autoReply, draftForRep, handBack, moveLead, sendMessage, takeOver } from "@/lib/automation/leads";
 import { bookVisit, cancelVisit, checkIn, completeVisit, confirmAttendance, findVisit, markNoShow, VisitError } from "@/lib/automation/visits";
@@ -18,6 +18,10 @@ import { randomUUID } from "node:crypto";
 import { verifyUnit } from "@/lib/inventory";
 import { generateBrochure, sendBrochure } from "@/lib/brochure/generate";
 import { SERVICE_IDS } from "@/lib/services/catalog";
+import { compliantBody } from "@/lib/compliance";
+import { addManualLead, ManualLeadInput } from "@/lib/manual-lead";
+import { holdUnit, releaseUnit, sellUnit, type UnitActionResult } from "@/lib/allocation";
+import { generateProposal, requestProposalSend } from "@/lib/proposals/proposals";
 
 /**
  * Every rep action. Each one: (1) requires a signed-in rep, (2) validates its
@@ -74,10 +78,12 @@ export async function sendAction(leadId: string, channel: string, body: string) 
   return run(leadId, async (actor) => {
     const id = LeadId.parse(leadId);
     const input = z.object({ channel: z.enum(CHANNELS), body: z.string().trim().min(1, "Write a message.").max(1600) }).parse({ channel, body });
-    if (input.channel === "in_app" && input.body.length > 500) throw new Error("In-app messages are limited to 500 characters.");
+    // What actually goes out carries the project's RERA line / exemption — that must fit too.
+    const final = input.channel === "call" ? input.body : await compliantBody(id, input.body);
+    if (input.channel === "in_app" && final.length > 500) throw new Error(`In-app messages are limited to 500 characters, including the RERA line (${final.length}).`);
     // A rep writing to the buyer IS a takeover: automation steps back.
     await takeOver(id, actor);
-    const sent = await sendMessage(id, input.channel, input.body, actor);
+    const sent = await sendMessage(id, input.channel, final, actor);
     const note =
       sent.delivered === "whatsapp"
         ? sent.template
@@ -277,24 +283,19 @@ export async function saveVisitSettingsAction(input: unknown) {
   });
 }
 
-export async function unitStatusAction(leadId: string, unitId: string, status: string) {
-  return run(leadId, async (actor) => {
-    const result = await verifyUnit({ unitId: z.string().min(1).max(160).parse(unitId), status: z.enum(UNIT_STATUSES).parse(status), lastVerifiedAt: new Date().toISOString(), actor, leadId: LeadId.parse(leadId) });
-    if (!result.ok) throw new Error(result.conflict ? `Not saved: a newer check is already recorded (${result.message}).` : result.message);
-    revalidatePath("/inventory");
-    revalidatePath("/dashboard");
-  });
-}
-
 /**
- * Inventory page: a rep's verification. `verifiedAt` defaults to now; an
- * earlier time (e.g. recording yesterday's site check) is allowed — and if
- * premium already holds a NEWER check, premium refuses it (409) and we say so.
+ * Inventory page: a rep's verification — re-stamps the unit's CURRENT status
+ * (as premium has it) as checked at `verifiedAt` (default now). It never
+ * changes a status: holds, releases and sales go through the allocation lock.
+ * If premium already holds a NEWER check, it refuses (409) and we say so.
  */
-export async function verifyUnitAction(unitId: string, status: string, verifiedAt: string | null) {
+export async function verifyUnitAction(unitId: string, verifiedAt: string | null) {
   return run(null, async (actor) => {
     const at = verifiedAt ? z.string().datetime({ offset: true }).parse(verifiedAt) : new Date().toISOString();
-    const result = await verifyUnit({ unitId: z.string().min(1).max(160).parse(unitId), status: z.enum(UNIT_STATUSES).parse(status), lastVerifiedAt: at, actor });
+    const id = z.string().min(1).max(160).parse(unitId);
+    const current = (await premium.listInventory({})).find((u) => u.unitId === id);
+    if (!current) throw new Error("That unit isn't in the inventory any more.");
+    const result = await verifyUnit({ unitId: id, status: current.status, lastVerifiedAt: at, actor });
     if (!result.ok) throw new Error(result.conflict ? `Not saved: a newer check is already recorded (${result.message}). Nothing changed.` : result.message);
     revalidatePath("/inventory");
     revalidatePath("/dashboard");
@@ -333,5 +334,64 @@ export async function registerServiceInterestAction(service: unknown): Promise<A
     if (!(await store().listServiceInterests()).some((x) => x.service === id && x.repId === repId)) await store().addServiceInterest({ id: randomUUID(), service: id, repId, at: new Date().toISOString() });
     revalidatePath("/services");
     return { note: "We'll tell you when it's ready." };
+  });
+}
+
+// ─── Manual lead entry (SAL-10) ─────────────────────────────────────────────
+
+const ActionKey = z.string().regex(/^[A-Za-z0-9_\-:.]{8,120}$/, "Refresh the page and try again.");
+
+/** "Add lead": through premium's POST /leads; a duplicate returns the existing lead (nothing created). */
+export async function addLeadAction(input: unknown, key: string): Promise<ActionResult<{ leadId: string; duplicate: boolean }>> {
+  return run(null, async (actor) => {
+    const r = await addManualLead(ManualLeadInput.parse(input), actor, `add-lead:${ActionKey.parse(key)}`);
+    revalidatePath("/inbox");
+    return { data: { leadId: r.leadId, duplicate: r.duplicate }, note: r.duplicate ? "This person is already a lead on this project — opening that lead." : "Lead added." };
+  });
+}
+
+// ─── Allocation lock (OPS-01) ───────────────────────────────────────────────
+
+const UnitId = z.string().regex(/^[A-Za-z0-9_\-:|.]{1,160}$/);
+const unitResult = async (r: UnitActionResult, leadId: string | null) => {
+  revalidatePath("/inventory");
+  if (leadId) revalidatePath(`/leads/${encodeURIComponent(leadId)}`);
+  if (!r.ok) throw new Error(r.message);
+  return { note: r.note[0].toUpperCase() + r.note.slice(1) + "." };
+};
+
+export async function holdUnitAction(unitId: string, leadId: string, expiresAt: string, reason: string, key: string) {
+  return run(leadId, async (actor) => {
+    const until = z.string().datetime({ offset: true }).parse(expiresAt);
+    if (Date.parse(until) <= Date.now() + 60_000) throw new Error("Pick an expiry in the future.");
+    if (Date.parse(until) > Date.now() + 30 * 86_400_000) throw new Error("A hold can last at most 30 days.");
+    return unitResult(await holdUnit({ unitId: UnitId.parse(unitId), leadId: LeadId.parse(leadId), expiresAt: until, reason: z.string().trim().max(300).parse(reason) || undefined, actor, idempotencyKey: `hold:${ActionKey.parse(key)}` }), leadId);
+  });
+}
+
+export async function releaseUnitAction(unitId: string, leadId: string | null, reason: string, key: string) {
+  return run(leadId, async (actor) => unitResult(await releaseUnit({ unitId: UnitId.parse(unitId), leadId: leadId ? LeadId.parse(leadId) : null, reason: z.string().trim().max(300).parse(reason) || undefined, actor, idempotencyKey: `release:${ActionKey.parse(key)}` }), leadId));
+}
+
+export async function sellUnitAction(unitId: string, bookingRef: string, leadId: string | null, key: string) {
+  return run(leadId, async (actor) => {
+    const ref = z.string().trim().regex(/^[A-Za-z0-9_\-/.:#]{1,80}$/, "Booking reference: letters, digits and - / . : #").parse(bookingRef);
+    return unitResult(await sellUnit({ unitId: UnitId.parse(unitId), bookingRef: ref, leadId: leadId ? LeadId.parse(leadId) : null, actor, idempotencyKey: `sold:${ActionKey.parse(key)}` }), leadId);
+  });
+}
+
+// ─── Proposals (OPS-02) ─────────────────────────────────────────────────────
+
+export async function generateProposalAction(leadId: string, unitId: string) {
+  return run(leadId, async (actor) => {
+    const { proposal, isNew } = await generateProposal(LeadId.parse(leadId), UnitId.parse(unitId), actor);
+    return { note: isNew ? `Proposal version ${proposal.version} made.` : `Nothing has changed since version ${proposal.version} — that version is current.` };
+  });
+}
+
+export async function sendProposalAction(leadId: string, proposalId: string) {
+  return run(leadId, async (actor) => {
+    const p = await requestProposalSend(z.string().uuid().parse(proposalId), actor);
+    return { note: p.send.status === "sent" ? "Already sent." : "Sent for approval — it carries prices, so a person approves it before the buyer gets it." };
   });
 }

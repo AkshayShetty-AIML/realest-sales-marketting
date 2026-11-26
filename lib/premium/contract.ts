@@ -12,7 +12,12 @@ export const LEAD_STATUSES = ["new", "open", "in_progress", "on_hold", "won", "l
 export const LEAD_STAGES = ["inquiry", "qualified", "visit_scheduled", "visit_done", "negotiation", "booking"] as const;
 export const CHANNELS = ["whatsapp", "sms", "email", "call", "in_app"] as const;
 export const VISIT_STATUSES = ["scheduled", "confirmed", "completed", "cancelled", "no_show"] as const;
-export const UNIT_STATUSES = ["available", "blocked", "sold"] as const;
+/** Canonical unit status (premium UNIT_STATUSES). */
+export const UNIT_STATUSES = ["available", "held", "sold"] as const;
+/** v1 wire values — premium still sends a held unit's `status` as "blocked"; read as "held". */
+export const LEGACY_UNIT_STATUSES = ["available", "blocked", "sold"] as const;
+/** Lead sources a rep can pick when entering a lead by hand (premium `source`). */
+export const MANUAL_SOURCES = ["walk_in", "call", "referral", "event", "other"] as const;
 
 export type LeadStatus = (typeof LEAD_STATUSES)[number];
 export type LeadStage = (typeof LEAD_STAGES)[number];
@@ -129,8 +134,8 @@ export const LeadDetail = Lead.extend({
 export const Unit = z.object({
   unitId: z.string(),
   projectId: z.string(),
-  /** v1 wire value (held is sent as "blocked"). Prefer `availability`. */
-  status: z.enum(UNIT_STATUSES),
+  /** v1 wire value — held arrives as "blocked" (or "held"); always read as the canonical "held". */
+  status: z.enum([...LEGACY_UNIT_STATUSES, "held"]).transform((s): UnitStatus => (s === "blocked" ? "held" : s)),
   price: z.number().nullable(),
   lastVerifiedAt: z.string(),
   // ── canonical unit fields (premium 20261014000200_inventory_leads_foundation) — optional for older premium builds ──
@@ -149,7 +154,26 @@ export const Unit = z.object({
   provenance: z.enum(["verified", "owner_stated", "indicative", "pending"]).optional(),
   /** Per-field provenance, e.g. { facing: "estimate", price: "on_request" }. */
   fieldStatus: z.record(z.string(), z.string()).optional(),
+  /** OPS-01: who holds it, for which lead, until when (null unless held through POST /units/:id/hold). */
+  hold: z.object({ by: z.string().nullable(), leadId: z.string().nullable(), until: z.string().nullable(), reason: z.string().nullable() }).nullable().optional(),
+  /** The booking it was sold under. */
+  bookingRef: z.string().nullable().optional(),
 });
+
+/** POST /leads → the lead, and whether it already existed (same phone / email on the project). */
+export const CreatedLead = LeadDetail.extend({ duplicate: z.boolean() });
+export type CreatedLead = z.infer<typeof CreatedLead>;
+
+/** A 409 from /units/:id/hold · release · sold: who holds the unit and until when. */
+export const UnitConflictDetails = z.object({
+  status: z.string().optional(),
+  availability: z.string().optional(),
+  heldBy: z.string().nullable().optional(),
+  leadId: z.string().nullable().optional(),
+  until: z.string().nullable().optional(),
+  bookingRef: z.string().nullable().optional(),
+});
+export type UnitConflictDetails = z.infer<typeof UnitConflictDetails>;
 
 /** One physical block of a listing (premium `buildings`), with a fresh inventory summary. */
 export const Building = z.object({
@@ -206,6 +230,14 @@ export const Property = z
       sold: z.number(),
       lastVerifiedAt: z.string().nullable(),
     }),
+    /** The project's own RERA registration number, when premium has it. */
+    reraNumber: z.string().nullable().optional(),
+    // ── cost-sheet inputs (premium lib/costs/all-in.ts reads the same fields) ──
+    priceNum: z.number().nullable().optional(),
+    tco: z.object({ parking: z.number().nullable(), clubhouse: z.number().nullable(), gst: z.number().nullable() }).passthrough().optional(),
+    tcoExtras: z.array(z.object({ label: z.string(), amount: z.number().nullable() }).passthrough()).optional(),
+    /** Per-field provenance: { "tco.parking": { source, status }, … }. */
+    fieldStatus: z.record(z.string(), z.object({ source: z.string().nullable().optional(), status: z.string().nullable().optional() }).passthrough()).optional(),
   })
   .passthrough();
 

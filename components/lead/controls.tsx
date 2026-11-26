@@ -13,7 +13,6 @@ import {
   revealContactAction,
   sendAction,
   takeOverAction,
-  unitStatusAction,
   visitStatusAction,
   type ActionResult,
 } from "@/app/actions";
@@ -24,12 +23,10 @@ import {
   LEAD_STATUSES,
   STAGE_LABEL,
   STATUS_LABEL,
-  UNIT_STATUSES,
   VISIT_TRANSITIONS,
   type Channel,
   type LeadStage,
   type LeadStatus,
-  type UnitStatus,
   type VisitStatus,
 } from "@/lib/premium/contract";
 import { Button } from "@/components/ui/Button";
@@ -447,14 +444,3 @@ export function VisitStatus({ leadId, visitId, status }: { leadId: string; visit
   );
 }
 
-export function UnitStatus({ leadId, unitId, status }: { leadId: string; unitId: string; status: UnitStatus }) {
-  const { pending, go, feedback } = useAction();
-  return (
-    <div>
-      <Select className="!h-9 w-32 text-[13px]" value={status} disabled={pending} aria-label={`Status of ${unitId}`} onChange={(e) => go(() => unitStatusAction(leadId, unitId, e.target.value), undefined, "Updated and re-verified now.")}>
-        {UNIT_STATUSES.map((s) => <option key={s} value={s}>{s[0].toUpperCase() + s.slice(1)}</option>)}
-      </Select>
-      {feedback}
-    </div>
-  );
-}

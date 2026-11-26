@@ -196,7 +196,7 @@ export async function loadDashboard(now = Date.now()): Promise<Dashboard> {
     inventory: {
       rows: inv,
       available: inv.filter((u) => u.status === "available").length,
-      blocked: inv.filter((u) => u.status === "blocked").length,
+      blocked: inv.filter((u) => u.status === "held").length,
       sold: inv.filter((u) => u.status === "sold").length,
       fresh: inv.filter((u) => u.freshness === "fresh").length,
       ageing: inv.filter((u) => u.freshness === "ageing").length,

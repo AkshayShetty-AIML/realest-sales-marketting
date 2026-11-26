@@ -6,6 +6,8 @@ import type {
   LinkToken,
   Brochure,
   FirstReply,
+  ProjectCompliance,
+  Proposal,
   ServiceInterest,
   SequenceRun,
   VisitRecord,
@@ -151,5 +153,11 @@ export function createSupabaseStore(url: string, secretKey: string): SalesStore 
     listFirstReplies: () => select<FirstReply>("first_replies", "select=*&order=arrived_at.desc&limit=5000"),
     addServiceInterest: async (row) => void (await upsert("service_interests", row, "id", true)),
     listServiceInterests: () => select<ServiceInterest>("service_interests", "select=*&order=at.desc"),
+    getProjectCompliance: (projectId) => first<ProjectCompliance>("project_compliance", `select=*&project_id=${eq(projectId)}`),
+    listProjectCompliance: () => select<ProjectCompliance>("project_compliance", "select=*"),
+    setProjectCompliance: async (row) => void (await upsert("project_compliance", row, "project_id")),
+    upsertProposal: async (p) => void (await upsert("proposals", p, "id")),
+    getProposal: (id) => first<Proposal>("proposals", `select=*&id=${eq(id)}`),
+    listProposals: (f = {}) => select<Proposal>("proposals", `select=*${f.leadId ? `&lead_id=${eq(f.leadId)}` : ""}&order=version.desc`),
   };
 }

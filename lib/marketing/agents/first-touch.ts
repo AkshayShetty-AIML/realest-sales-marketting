@@ -3,6 +3,7 @@ import { ARCHETYPES, type Archetype } from "../../premium/marketing-contract";
 import { audit as salesAudit, store as salesStore } from "../../store";
 import type { AutoReply } from "../../store/types";
 import { buildFacts } from "../../grounding/facts";
+import { complianceFor, reraLine, type Compliance } from "../../compliance";
 import { greetingName, topicsOf, type Topic } from "../../grounding/compose";
 import { draftGroundedReply } from "../../grounding/llm";
 import { generateBrochure } from "../../brochure/generate";
@@ -98,7 +99,7 @@ export function riskReasons(kind: string, question: string, draft: string): stri
   return Array.from(reasons);
 }
 
-const fits = (body: string, rera: string) => `${body}\n\nRERA Reg. No.: ${rera}`.length <= IN_APP_MAX;
+const fits = (body: string, line: string) => `${body}\n\n${line}`.length <= IN_APP_MAX;
 
 export type FirstTouchOutcome =
   | { status: "off"; reason: string }
@@ -138,9 +139,13 @@ export async function firstTouch(store: HarnessStore, workspaceId: string, leadI
   await audit(scoped, { kind: "first_touch.started", actor: "harness:first-touch", detail: `${key} · ${property.name}${archetype ? ` · ${archetype}` : ""} (the buyer's message is untrusted — used for drafting only)`, data: { leadId, trigger: opts.trigger ?? null, untrustedInput: true } });
 
   const finish = async (reply: Partial<AutoReply>) => salesStore().updateAutoReply({ ...lock, ...reply });
-  const rera = (await brandKitFor(ctx)).kit?.defaultReraRegNo ?? null;
-  if (!rera) {
-    const note = "no RERA registration number in the brand kit — nothing can go out without it";
+  // The project's RERA number or exemption (Brand settings / premium), else this workspace's brand-kit RERA number.
+  const kitRera = (await brandKitFor(ctx)).kit?.defaultReraRegNo ?? null;
+  const compliance: Compliance | null = (await complianceFor(property.id, property)) ?? (kitRera ? { kind: "rera", reraRegNo: kitRera, line: reraLine(kitRera), source: "brand-settings" } : null);
+  const rera = compliance?.kind === "rera" ? compliance.reraRegNo : "";
+  const line = compliance?.line ?? "";
+  if (!compliance) {
+    const note = "no RERA registration number or exemption for this project — nothing can go out without one";
     await finish({ outcome: "handoff", handoffReason: `first reply blocked: ${note}` });
     await holdFirstReply({ leadId, arrivedAt: lead.createdAt, status: "blocked", note, workspaceId, campaignId });
     await audit(scoped, { kind: "first_touch.blocked", actor: "harness:first-touch", detail: `${key}: ${note}`, data: { leadId } });
@@ -163,7 +168,7 @@ export async function firstTouch(store: HarnessStore, workspaceId: string, leadI
   const answerBody = `${draft.body}\n\n${AUTO_LABEL}`;
   // A risky question always gets a drafted reply for a person to approve — even when the facts can't answer it.
   const hasAnswer = !draft.handoff || reasons.length > 0;
-  if (hasAnswer && !fits(answerBody, rera)) reasons.push(`the answer is too long for an in-app message (${answerBody.length} characters)`);
+  if (hasAnswer && !fits(answerBody, line)) reasons.push(`the answer is too long for an in-app message (${answerBody.length} characters)`);
   const holdAnswer = hasAnswer && reasons.length > 0;
 
   const messages: FirstTouchMessage[] = [];
@@ -175,7 +180,7 @@ export async function firstTouch(store: HarnessStore, workspaceId: string, leadI
   if (brochureLink) parts.push({ type: "brochure", text: `Here's a brochure we put together for you on ${property.name}: ${brochureLink}` });
   // Trim to the in-app limit: the welcome line goes first, then the brochure — the acknowledgement always stays.
   for (const drop of ["archetype_welcome", "brochure"]) {
-    if (fits(`${parts.map((p) => p.text).join(" ")}\n\n${AUTO_LABEL}`, rera)) break;
+    if (fits(`${parts.map((p) => p.text).join(" ")}\n\n${AUTO_LABEL}`, line)) break;
     const i = parts.findIndex((p) => p.type === drop);
     if (i >= 0) parts.splice(i, 1);
   }
@@ -186,7 +191,7 @@ export async function firstTouch(store: HarnessStore, workspaceId: string, leadI
       kind: FIRST_TOUCH_KIND,
       key,
       title: `First reply — ${lead.contact.name ?? leadId}`,
-      data: { leadId, propertyId: property.id, archetype, reraRegNo: rera, engine: draft.engine, factKeys: draft.factKeys, reasons, messages, startedAt },
+      data: { leadId, propertyId: property.id, archetype, reraRegNo: rera, complianceLine: line, engine: draft.engine, factKeys: draft.factKeys, reasons, messages, startedAt },
       text: messages.map((m) => m.body).join("\n"),
       source: "harness:first-touch",
     });
@@ -194,7 +199,7 @@ export async function firstTouch(store: HarnessStore, workspaceId: string, leadI
 
   // ── send the low-risk messages now; hold the rest for approval ──
   for (const m of messages) {
-    const args = { leadKey: key, index: m.index, body: m.body, reraRegNo: rera, aiLabel: m.aiLabel };
+    const args = { leadKey: key, index: m.index, body: m.body, complianceLine: line, reraRegNo: rera, aiLabel: m.aiLabel };
     const compliance = complianceCheck("outbound", "send", firstTouchReply.ships!(args));
     if (m.role === "answer" && holdAnswer) {
       const approval = await requestApproval(scoped, { goalId: null, taskId: null, runId: null, tool: eff, args, reasons: [...reasons.map((r) => `${r} — a person decides`), "outbound (send) — always approved by a human"], kind: "action", requestedBy: "harness:first-touch", ships: firstTouchReply.ships!(args), now: clock().toISOString() });

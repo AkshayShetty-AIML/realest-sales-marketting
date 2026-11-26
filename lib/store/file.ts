@@ -13,6 +13,8 @@ import type {
   Assignment,
   AuditEvent,
   FirstReply,
+  ProjectCompliance,
+  Proposal,
   ServiceInterest,
   AutoReply,
   ConversationState,
@@ -54,6 +56,8 @@ interface Data {
   cursors: Record<string, string>;
   firstReplies: FirstReply[];
   serviceInterests: ServiceInterest[];
+  projectCompliance: ProjectCompliance[];
+  proposals: Proposal[];
 }
 
 const MAX_AUDIT = 2000;
@@ -81,6 +85,8 @@ const empty = (): Data => ({
   cursors: {},
   firstReplies: [],
   serviceInterests: [],
+  projectCompliance: [],
+  proposals: [],
 });
 
 export function fileStorePath(): string {
@@ -219,5 +225,11 @@ export function createFileStore(): SalesStore {
     listFirstReplies: async () => (await load()).firstReplies,
     addServiceInterest: (row) => mutate((d) => void d.serviceInterests.push(row)),
     listServiceInterests: async () => (await load()).serviceInterests,
+    getProjectCompliance: async (projectId) => (await load()).projectCompliance.find((c) => c.projectId === projectId) ?? null,
+    listProjectCompliance: async () => (await load()).projectCompliance,
+    setProjectCompliance: (row) => mutate((d) => upsertBy(d.projectCompliance, row, (c) => c.projectId === row.projectId)),
+    upsertProposal: (p) => mutate((d) => upsertBy(d.proposals, p, (x) => x.id === p.id)),
+    getProposal: async (id) => (await load()).proposals.find((x) => x.id === id) ?? null,
+    listProposals: async (f = {}) => (await load()).proposals.filter((x) => !f.leadId || x.leadId === f.leadId).sort((a, b) => b.version - a.version || b.createdAt.localeCompare(a.createdAt)),
   };
 }

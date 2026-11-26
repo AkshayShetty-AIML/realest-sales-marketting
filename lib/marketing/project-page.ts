@@ -146,7 +146,7 @@ export async function loadProjectPage(page: LandingPage): Promise<ProjectPageMod
       carpetSqft: u.carpetSqft ?? null,
       superBuiltUpSqft: u.superBuiltUpSqft ?? null,
       price: u.price,
-      availability: u.availability ?? (u.status === "blocked" ? "held" : u.status),
+      availability: u.availability ?? u.status,
       indicative: u.indicative ?? false,
       provenance: u.provenance ?? "owner_stated",
       lastVerifiedAt: u.lastVerifiedAt,

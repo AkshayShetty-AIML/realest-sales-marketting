@@ -7,10 +7,12 @@ import { buildFacts } from "../grounding/facts";
 import { draftGroundedReply, type GroundedDraft } from "../grounding/llm";
 import { sendWhatsApp, whatsappPlan } from "../whatsapp/twilio";
 import { whatsappPaused } from "../env";
-import { sendNow } from "./delivery";
+import { IN_APP_MAX, sendNow } from "./delivery";
 import { startSequences } from "./sequences";
 import { routeLead } from "./routing";
-import { recordFirstReply } from "./response-time";
+import { holdFirstReply, recordFirstReply } from "./response-time";
+import { applyCompliance, complianceFor, compliantBody } from "../compliance";
+import { composeReply, greetingName } from "../grounding/compose";
 import type { AutoReply } from "../store/types";
 
 /**
@@ -67,7 +69,9 @@ export interface SentMessage {
  *   in_app   → the premium app delivers it to the buyer's inbox
  *   sms / email / call → logged only (no SMS without TRAI DLT; calls are made by the rep)
  */
-export async function sendMessage(leadId: string, channel: Channel, body: string, sentBy: string): Promise<SentMessage> {
+export async function sendMessage(leadId: string, channel: Channel, raw: string, sentBy: string, opts: { ai?: boolean; projectId?: string } = {}): Promise<SentMessage> {
+  // A call is a log entry, not a message to the buyer; everything else carries its project's RERA line / exemption (+ AI label).
+  const body = channel === "call" ? raw : await compliantBody(leadId, raw, opts);
   const sent = await deliverMessage(leadId, channel, body, sentBy);
   // A rep's own reply counts as the lead's first reply when nothing automated answered first.
   if (sent.delivered !== "queued-pending-twilio" && sentBy !== AI_SENDER) {
@@ -162,13 +166,30 @@ export async function autoReply(leadId: string, trigger: string): Promise<AutoRe
   if (existing) await store().updateAutoReply(reply);
   else if (!(await store().claimAutoReply(reply))) return { done: false, skipped: "another worker is replying" };
 
+  // The project's RERA line (or exemption) and, where AI wrote it, the AI label — or nothing goes out.
+  const compliance = await complianceFor(lead.propertyId);
+  if (!compliance) {
+    const note = "no RERA registration number or exemption for this project — add one in Brand settings → Projects";
+    await store().updateAutoReply({ ...reply, outcome: "handoff", handoffReason: `instant reply blocked: ${note}` });
+    await store().setConversation({ leadId, mode: "human", takenOverBy: null, takenOverAt: null, suggestedDraft: null });
+    await holdFirstReply({ leadId, arrivedAt: lead.createdAt, status: "blocked", note });
+    await audit("outbound-blocked", leadId, AI_SENDER, `instant reply not sent: ${note}`);
+    if (!lead.assignedTo) await autoAssign(leadId, lead.context.property?.locality ?? property.locality);
+    return { done: false, skipped: `blocked — ${note}` };
+  }
+  let body = applyCompliance(draft.body, compliance, { ai: draft.engine === "llm" });
+  // In-app is capped at 500 characters: the shorter deterministic answer, then a holding line.
+  if (channel === "in_app" && body.length > IN_APP_MAX) body = applyCompliance(composeReply({ kind: lead.kind, message: lead.message, contactName: lead.contact.name }, facts).body, compliance);
+  if (channel === "in_app" && body.length > IN_APP_MAX) body = applyCompliance(`Hi${greetingName(lead.contact.name) ? ` ${greetingName(lead.contact.name)}` : ""}, thanks for your interest in ${property.name}. A member of our team will reply shortly.`, compliance);
+  reply.body = body;
+
   try {
-    const sent = await sendMessage(leadId, channel, draft.body, AI_SENDER);
+    const sent = await sendMessage(leadId, channel, body, AI_SENDER);
     let template = false;
     // Outside the window: the answer went in-app; an approved template can still open WhatsApp.
     if (!freeForm && plan.configured && plan.optedIn && !plan.problem && plan.templateAvailable) {
       try {
-        await sendMessage(leadId, "whatsapp", draft.body, AI_SENDER);
+        await sendMessage(leadId, "whatsapp", body, AI_SENDER);
         template = true;
       } catch (error) {
         await audit("whatsapp-failed", leadId, AI_SENDER, error instanceof Error ? error.message : "unknown");

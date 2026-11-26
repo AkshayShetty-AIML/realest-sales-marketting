@@ -159,6 +159,8 @@ export interface ShipItem {
   text: string;
   /** RERA registration number of the project it advertises; the copy must carry its "RERA Reg. No.:" line. */
   reraRegNo: string;
+  /** The exact compliance line it must carry when it isn't the RERA line (e.g. a project's RERA exemption statement). */
+  complianceLine?: string;
   /** The AI disclosure shown with it (e.g. "AI-generated"); required when AI wrote or rewrote it. */
   aiLabel: string | null;
   aiAssisted: boolean;

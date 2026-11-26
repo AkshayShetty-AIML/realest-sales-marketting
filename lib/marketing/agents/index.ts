@@ -6,6 +6,7 @@ import { MARKETING_TOOLS } from "./tools";
 import { registerNurtureListeners } from "./nurture-events";
 import { registerFirstTouchListeners } from "./first-touch";
 import { registerIntakeListeners } from "./lead-intake";
+import { proposalSend, registerProposalListeners } from "../../proposals/send-tool";
 
 
 /**
@@ -22,6 +23,9 @@ export function registerMarketingFeatures(): void {
   // New lead in the shared store → the funnel agent (tag, score, archetype, enrol, notify) + held first replies.
   registerIntakeListeners();
   registerFirstTouchListeners();
+  // OPS-02: sending a proposal (it carries prices) — always approval-gated.
+  registerTool({ ...proposalSend, owner: "distribution" } as never, { replace: true });
+  registerProposalListeners();
 }
 
 export { MARKETING_AGENT_TYPES } from "./subagents";

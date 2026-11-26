@@ -10,9 +10,9 @@ import type { LinkPurpose, LinkToken } from "./store/types";
  * the buyer as in_app messages; opened at /b/<token>.
  */
 
-const TTL_DAYS: Record<LinkPurpose, number> = { book: 14, visit: 30, feedback: 21, brochure: 30 };
+const TTL_DAYS: Record<LinkPurpose, number> = { book: 14, visit: 30, feedback: 21, brochure: 30, proposal: 30 };
 
-export async function mintLink(purpose: LinkPurpose, leadId: string, visitId: string | null = null, now = new Date(), brochureId: string | null = null): Promise<string> {
+export async function mintLink(purpose: LinkPurpose, leadId: string, visitId: string | null = null, now = new Date(), brochureId: string | null = null, proposalId: string | null = null): Promise<string> {
   const token = randomBytes(16).toString("base64url");
   const link: LinkToken = {
     token,
@@ -20,6 +20,7 @@ export async function mintLink(purpose: LinkPurpose, leadId: string, visitId: st
     leadId,
     visitId,
     brochureId,
+    ...(proposalId ? { proposalId } : {}),
     expiresAt: new Date(now.getTime() + TTL_DAYS[purpose] * 86_400_000).toISOString(),
     createdAt: now.toISOString(),
     usedAt: null,

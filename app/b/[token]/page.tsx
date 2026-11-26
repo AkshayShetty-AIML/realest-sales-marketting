@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { ProposalContent } from "@/lib/proposals/proposals";
 import { resolveLink } from "@/lib/links";
 import { premium } from "@/lib/premium/client";
 import { store } from "@/lib/store";
@@ -120,6 +121,37 @@ export default async function BuyerPage({ params }: { params: Promise<{ token: s
           Open the full brochure (PDF)
         </a>
         <p className="mt-3 text-center text-[12px] text-muted">Honest grade {c.property.grade} · every figure is from the verified listing</p>
+      </Frame>
+    );
+  }
+
+  // ── Proposal ──
+  if (link.purpose === "proposal") {
+    const proposal = link.proposalId ? await store().getProposal(link.proposalId) : null;
+    const c = proposal?.content as ProposalContent | undefined;
+    if (!proposal || proposal.leadId !== lead.id || !c || c.sheet.onRequest) {
+      return (
+        <Frame eyebrow="Your proposal" title="We couldn't find this proposal">
+          <p className="text-[15px] text-body">Reply in your inbox and we&apos;ll send a fresh one.</p>
+        </Frame>
+      );
+    }
+    return (
+      <Frame eyebrow="Your proposal" title={`${c.unit.label} at ${c.property.name}`}>
+        <p className="mb-4 text-[14px] text-body">{propertyLine}</p>
+        <ul className="divide-y divide-line rounded-[12px] border border-line bg-white">
+          {c.sheet.lines.map((l) => (
+            <li key={l.key} className="flex items-start justify-between gap-3 px-4 py-3 text-[14px]">
+              <span className="text-muted">{l.label}</span>
+              <span className={l.amount === null ? "text-right text-ochre-ink" : "text-right text-ink"}>{l.amount === null ? "To confirm" : `₹${l.amount.toLocaleString("en-IN")}`}</span>
+            </li>
+          ))}
+          <li className="flex items-start justify-between gap-3 px-4 py-3 text-[15px] font-semibold"><span className="text-ink">All-in total</span><span className="text-ink">₹{c.sheet.total.toLocaleString("en-IN")}</span></li>
+        </ul>
+        <a href={`/b/${token}/proposal.pdf`} className="mt-6 inline-flex h-11 w-full items-center justify-center rounded-[8px] bg-brand px-5 text-[15px] font-semibold text-white hover:bg-brand-hover">
+          Open the full proposal and payment plans (PDF)
+        </a>
+        <p className="mt-3 text-center text-[12px] text-muted">{c.complianceLine} · Illustrative — the developer&apos;s agreement governs</p>
       </Frame>
     );
   }
